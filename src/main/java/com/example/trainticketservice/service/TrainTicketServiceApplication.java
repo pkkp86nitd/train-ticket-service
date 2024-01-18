@@ -220,4 +220,11 @@ public class TrainTicketServiceApplication extends TrainTicketServiceGrpc.TrainT
         return seatOccupied.getOrDefault(seatSection, 0) > 0;
     }
 
+    public Map<String, Receipt> getTickets() {
+        return tickets;
+    }
+
+    public Map<String, Integer> getSeatOccupied() {
+        return seatOccupied;
+    }
 }

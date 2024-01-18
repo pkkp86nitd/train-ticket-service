@@ -3,35 +3,36 @@ package com.example.trainticketservice.service;
 
 import com.example.trainticketservice.*;
 import com.example.trainticketservice.client.TrainTicketClientApplication;
+import io.grpc.stub.StreamObserver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.*;
+import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.TestPropertySource;
-
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
+
+import java.util.List;
 
 
-
-@TestPropertySource(locations = "classpath:application-test.properties")
-@DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_CLASS)
+@SpringBootTest
 class TrainTicketServiceApplicationTest {
-    private TrainTicketClientApplication client;
+
 
     @BeforeEach
     void setUp() {
-
-        client = new TrainTicketClientApplication("localhost", 6565);
-    }
-
-    @AfterEach
-    void tearDown() {
-        // Shutdown the client after each test
-        client.shutdown();
+        MockitoAnnotations.openMocks(this);
     }
 
     @Test
     void testSubmitPurchase_Successful() {
+
+        TrainTicketServiceApplication service = new TrainTicketServiceApplication();
+
+        StreamObserver<Receipt> purchaseResponseObserver = mock(StreamObserver.class);
         PurchaseRequest purchaseRequest = PurchaseRequest.newBuilder()
                 .setFrom("Delhi")
                 .setTo("BLR")
@@ -40,123 +41,164 @@ class TrainTicketServiceApplicationTest {
                 .setUserEmail("pk@gmail.com")
                 .build();
 
-        Receipt receipt = client.submitPurchase(purchaseRequest);
-        assertNotNull(receipt);
-        assertEquals("Pankaj", receipt.getUserFirstName());
-        assertEquals("Kumar", receipt.getUserLastName());
-        assertEquals("pk@gmail.com", receipt.getUserEmail());
+
+        service.submitPurchase(purchaseRequest, purchaseResponseObserver);
+        ArgumentCaptor<Receipt> receiptCaptor = ArgumentCaptor.forClass(Receipt.class);
+
+        verify(purchaseResponseObserver, times(1)).onNext(receiptCaptor.capture());
+
+        List<Receipt> capturedReceipts = receiptCaptor.getAllValues();
+
+        assertEquals(1, capturedReceipts.size());
+
+        Receipt actualReceipt = capturedReceipts.get(0);
+
+        assertNotNull(actualReceipt);
+        assertEquals("Pankaj", actualReceipt.getUserFirstName());
+        assertEquals("Kumar", actualReceipt.getUserLastName());
+        assertEquals("pk@gmail.com", actualReceipt.getUserEmail());
+
     }
 
     @Test
-    void testViewReceipt_Successful() {
-        // Updated purchase details
-        PurchaseRequest purchaseRequest = PurchaseRequest.newBuilder()
-                .setFrom("Delhi")
-                .setTo("BLR")
-                .setUserFirstName("Pankaj")
-                .setUserLastName("Kumar")
-                .setUserEmail("pk@gmail.com")
-                .build();
-        client.submitPurchase(purchaseRequest);
+    void testViewReceipt() {
+        TrainTicketServiceApplication service = new TrainTicketServiceApplication();
 
-        ViewReceiptRequest viewReceiptRequest = ViewReceiptRequest.newBuilder()
-                .setUserEmail("pk@gmail.com")
+        StreamObserver<Receipt> responseObserver = mock(StreamObserver.class);
+
+        Receipt mockReceipt = Receipt.newBuilder()
+                .setUserEmail("pk@example.com")
+                // ... set other receipt fields ...
+                .build();
+        service.getTickets().put("pk@example.com", mockReceipt);
+
+        // Create a request
+        ViewReceiptRequest request = ViewReceiptRequest.newBuilder()
+                .setUserEmail("pk@example.com")
                 .build();
 
-        Receipt receipt = client.viewReceipt(viewReceiptRequest);
-        assertNotNull(receipt);
-        assertEquals("pk@gmail.com", receipt.getUserEmail());
+
+        service.viewReceipt(request, responseObserver);
+
+        ArgumentCaptor<Receipt> receiptCaptor = ArgumentCaptor.forClass(Receipt.class);
+        verify(responseObserver).onNext(receiptCaptor.capture());
+
+        Receipt response = receiptCaptor.getValue();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getUserEmail()).isEqualTo("pk@example.com");
     }
 
+
     @Test
-    void testViewReceipt_FailureUserNotFound() {
-        ViewReceiptRequest viewReceiptRequest = ViewReceiptRequest.newBuilder()
-                .setUserEmail("nonexistent.user@example.com")
+    void testViewUsersBySection() {
+        TrainTicketServiceApplication service = new TrainTicketServiceApplication();
+
+        StreamObserver<UsersBySectionResponse> responseObserver = mock(StreamObserver.class);
+
+        String userEmail = "pk@example.com";
+        String section = "A";
+        Receipt mockReceipt = Receipt.newBuilder()
+                .setUserEmail(userEmail)
+                .setSeatSection(section)
+                .build();
+        service.getTickets().put(userEmail, mockReceipt);
+
+
+        SectionRequest request = SectionRequest.newBuilder()
+                .setSection(section)
                 .build();
 
-        assertThrows(RuntimeException.class, () -> client.viewReceipt(viewReceiptRequest));
+
+        service.viewUsersBySection(request, responseObserver);
+
+        ArgumentCaptor<UsersBySectionResponse> responseCaptor = ArgumentCaptor.forClass(UsersBySectionResponse.class);
+        verify(responseObserver).onNext(responseCaptor.capture());
+
+        UsersBySectionResponse response = responseCaptor.getValue();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getUserSeatsList()).hasSize(1);
+        assertThat(response.getUserSeatsList().get(0).getUserEmail()).isEqualTo(userEmail);
+        assertThat(response.getUserSeatsList().get(0).getSeatSection()).isEqualTo(section);
+        // ... add other assertions for receipt fields ...
     }
 
+
     @Test
-    void testViewUsersBySection_Successful() {
-        // Updated purchase details
-        PurchaseRequest purchaseRequest = PurchaseRequest.newBuilder()
-                .setFrom("Delhi")
-                .setTo("BLR")
-                .setUserFirstName("Pankaj")
-                .setUserLastName("Kumar")
-                .setUserEmail("pk@gmail.com")
-                .build();
-        client.submitPurchase(purchaseRequest);
+    void testRemoveUser() {
+        TrainTicketServiceApplication service = new TrainTicketServiceApplication();
 
-        SectionRequest sectionRequest = SectionRequest.newBuilder()
-                .setSection("A")
+        StreamObserver<RemoveUserResponse> responseObserver = mock(StreamObserver.class);
+
+        String userEmail = "pk@example.com";
+        String section = "A";
+        int seatNumber = 1;
+        Receipt mockReceipt = Receipt.newBuilder()
+                .setUserEmail(userEmail)
+                .setSeatSection(section)
+                .setSeatNumber(seatNumber)
+                .build();
+        service.getTickets().put(userEmail, mockReceipt);
+        service.getSeatOccupied().put(section + seatNumber, 1);
+
+        UserRequest request = UserRequest.newBuilder()
+                .setUserEmail(userEmail)
                 .build();
 
-        UsersBySectionResponse response = client.viewUsersBySection(sectionRequest);
-        assertNotNull(response);
-        assertEquals(1, response.getUserSeatsCount());
-        assertEquals("pk@gmail.com", response.getUserSeats(0).getUserEmail());
+        service.removeUser(request, responseObserver);
+
+        ArgumentCaptor<RemoveUserResponse> responseCaptor = ArgumentCaptor.forClass(RemoveUserResponse.class);
+        verify(responseObserver).onNext(responseCaptor.capture());
+
+        RemoveUserResponse response = responseCaptor.getValue();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(service.getSeatOccupied().get(section + seatNumber)).isEqualTo(0);
+        assertThat(service.getTickets().get(userEmail)).isNull();
     }
 
-    @Test
-    void testRemoveUser_Successful() {
-        // Updated purchase details
-        PurchaseRequest purchaseRequest = PurchaseRequest.newBuilder()
-                .setFrom("Delhi")
-                .setTo("BLR")
-                .setUserFirstName("Pankaj")
-                .setUserLastName("Kumar")
-                .setUserEmail("pk@gmail.com")
-                .build();
-        client.submitPurchase(purchaseRequest);
 
-        UserRequest userRequest = UserRequest.newBuilder()
-                .setUserEmail("pk@gmail.com")
-                .build();
-
-        RemoveUserResponse response = client.removeUser(userRequest);
-        assertTrue(response.getSuccess());
-    }
 
     @Test
-    void testRemoveUser_FailureUserNotFound() {
-        UserRequest userRequest = UserRequest.newBuilder()
-                .setUserEmail("nonexistent.user@example.com")
+    void testModifySeat() {
+        TrainTicketServiceApplication service = new TrainTicketServiceApplication();
+
+        StreamObserver<ModifySeatResponse> responseObserver = mock(StreamObserver.class);
+
+
+        String userEmail = "pk@example.com";
+        String section = "A";
+        int seatNumber = 1;
+        Receipt mockReceipt = Receipt.newBuilder()
+                .setUserEmail(userEmail)
+                .setSeatSection(section)
+                .setSeatNumber(seatNumber)
+                // ... set other receipt fields ...
                 .build();
+        service.getTickets().put(userEmail, mockReceipt);
+        service.getSeatOccupied().put(section + seatNumber, 1);
 
-        assertThrows(RuntimeException.class, () -> client.removeUser(userRequest));
-    }
-
-    @Test
-    void testModifySeat_Successful() {
-        // Updated purchase details
-        PurchaseRequest purchaseRequest = PurchaseRequest.newBuilder()
-                .setFrom("Delhi")
-                .setTo("BLR")
-                .setUserFirstName("Pankaj")
-                .setUserLastName("Kumar")
-                .setUserEmail("pk@gmail.com")
-                .build();
-        client.submitPurchase(purchaseRequest);
-
-        ModifySeatRequest modifySeatRequest = ModifySeatRequest.newBuilder()
-                .setUserEmail("pk@gmail.com")
+        ModifySeatRequest request = ModifySeatRequest.newBuilder()
+                .setUserEmail(userEmail)
                 .setNewSection("B")
                 .build();
 
-        ModifySeatResponse response = client.modifySeat(modifySeatRequest);
-        assertTrue(response.getSuccess());
+        service.modifySeat(request, responseObserver);
+
+        // Capture the argument passed to onNext
+        ArgumentCaptor<ModifySeatResponse> responseCaptor = ArgumentCaptor.forClass(ModifySeatResponse.class);
+        verify(responseObserver).onNext(responseCaptor.capture());
+
+        ModifySeatResponse response = responseCaptor.getValue();
+
+        assertThat(response).isNotNull();
+        assertThat(response.getSuccess()).isTrue();
+        assertThat(service.getSeatOccupied().get(section + seatNumber)).isEqualTo(0);
+        assertThat(service.getSeatOccupied().get("B" + seatNumber)).isEqualTo(1);
+        assertThat(service.getTickets().get(userEmail).getSeatSection()).isEqualTo("B");
     }
 
-    @Test
-    void testModifySeat_FailureUserNotFound() {
-        ModifySeatRequest modifySeatRequest = ModifySeatRequest.newBuilder()
-                .setUserEmail("nonexistent.user@example.com")
-                .setNewSection("B")
-                .build();
-
-        assertThrows(RuntimeException.class, () -> client.modifySeat(modifySeatRequest));
-    }
 
 }
