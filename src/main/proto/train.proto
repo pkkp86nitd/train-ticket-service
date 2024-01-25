@@ -19,6 +19,7 @@ message PurchaseRequest {
   string user_first_name = 3;
   string user_last_name = 4;
   string user_email = 5;
+  string discount = 6;
 }
 
 message ViewReceiptRequest {

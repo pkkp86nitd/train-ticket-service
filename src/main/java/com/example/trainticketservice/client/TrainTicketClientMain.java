@@ -73,6 +73,8 @@ public class TrainTicketClientMain {
         String lastName = reader.readLine().trim();
         System.out.print("User Email: ");
         String email = reader.readLine().trim();
+        System.out.print("Discount: choose from 1 and 2 : ");
+        String discount = reader.readLine().trim();
 
         PurchaseRequest purchaseRequest = PurchaseRequest.newBuilder()
                 .setFrom(from)
@@ -80,6 +82,7 @@ public class TrainTicketClientMain {
                 .setUserFirstName(firstName)
                 .setUserLastName(lastName)
                 .setUserEmail(email)
+                .setDiscount(discount)
                 .build();
 
         Receipt receipt =  clientApplication.submitPurchase(purchaseRequest);

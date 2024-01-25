@@ -29,6 +29,7 @@ public class TrainTicketServiceApplication extends TrainTicketServiceGrpc.TrainT
 
     @Override
     public void submitPurchase(PurchaseRequest request, StreamObserver<Receipt> responseObserver) {
+
         synchronized (this) {
             System.out.printf("Received SubmitPurchase request for user: %s%n", request.getUserEmail());
 
@@ -36,7 +37,14 @@ public class TrainTicketServiceApplication extends TrainTicketServiceGrpc.TrainT
                 for (int i = 0; i < SEATS_PER_SECTION; i++) {
                     String seatSection = String.format("%s%d", section, i + 1);
                     if (!isSeatOccupied(seatSection)) {
-                        double price = 20.0; // Fixed price
+                        double price = 20.0;
+                        try {
+                            Integer discount = parseDiscount(request.getDiscount());
+                            price -=  discount;
+                        }catch ( Exception ex){
+                            System.out.println("Invalid Discount, No Discount applied");
+                        }
+
 
                         Receipt receipt = Receipt.newBuilder()
                                 .setFrom(request.getFrom())
@@ -214,6 +222,7 @@ public class TrainTicketServiceApplication extends TrainTicketServiceGrpc.TrainT
                 responseObserver.onError(new RuntimeException("User not found for seat modification"));
             }
         }
+
     }
 
     private boolean isSeatOccupied(String seatSection) {
@@ -226,5 +235,20 @@ public class TrainTicketServiceApplication extends TrainTicketServiceGrpc.TrainT
 
     public Map<String, Integer> getSeatOccupied() {
         return seatOccupied;
+    }
+
+    private Integer parseDiscount(String discount) throws Exception{
+        try{
+            if(!Discount.isValid(discount))
+                throw new CustomException("Invalid Discount");
+            return Discount.valueOf(discount).getPercentage();
+        } catch (CustomException ex){
+            System.out.println("Custom Exception Error :" + ex.getLocalizedMessage());
+            throw new CustomException("Discount Parse Error ");
+        } catch (Exception ex){
+            System.out.println("New Exception Error :" + ex.getLocalizedMessage());
+            throw new CustomException("parse error : " + ex.getLocalizedMessage());
+        }
+
     }
 }
